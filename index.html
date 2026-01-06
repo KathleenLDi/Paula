@@ -35,7 +35,7 @@
       border:1px solid rgba(255,255,255,.12);
       display:block;
     }
-
+    
     .hint { opacity:.82; font-size: 13px; margin: 10px 0 10px; line-height:1.4; text-align:center; }
 
     /* botões embaixo */
@@ -78,6 +78,37 @@
       z-index: 20;
       display:none;
     }
+    /* ===== Controles Mobile ===== */
+#mobileControls {
+  display: none;
+  position: fixed;
+  bottom: 16px;
+  left: 0;
+  right: 0;
+  padding: 0 20px;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 3000;
+}
+
+#mobileControls button {
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  font-size: 26px;
+  border: none;
+  background: rgba(255, 77, 141, 0.9);
+  color: #fff;
+  font-weight: bold;
+}
+
+/* Mostra só em telas pequenas (celular) */
+@media (max-width: 768px) {
+  #mobileControls {
+    display: flex;
+  }
+}
+
   </style>
 </head>
 
@@ -106,6 +137,14 @@
       <button class="btn secondary" id="muteBtn">Música: ON</button>
     </div>
   </div>
+
+  <!-- Controles mobile -->
+<div id="mobileControls">
+  <button id="btnLeft">⬅️</button>
+  <button id="btnFire">🔥</button>
+  <button id="btnRight">➡️</button>
+</div>
+
 
   <!-- Modal inicial -->
   <div class="modal" id="startModal">
@@ -144,7 +183,6 @@ const TOUGH_CHANCE = 0.18;
 
 // mensagem de vitória (exatamente como você pediu)
 const WIN_MESSAGE = "Parabéns, meu bem! Você conseguiu e ganhou um vale beijinho 💖."; 
-"Obs.: válido somente até hoje!.";
 /* ================== */
 
 document.getElementById("target").textContent = TARGET_SCORE;
@@ -671,6 +709,46 @@ function confettiLoop(){
   }
 
   confettiRAF = requestAnimationFrame(confettiLoop);
+}
+/* ===== Controles Touch (Mobile) ===== */
+const btnLeft = document.getElementById("btnLeft");
+const btnRight = document.getElementById("btnRight");
+const btnFire = document.getElementById("btnFire");
+
+// se não existir (caso você ainda não tenha colocado o HTML), não quebra:
+if (btnLeft && btnRight && btnFire) {
+  // esquerda
+  btnLeft.addEventListener("touchstart", (e) => {
+    e.preventDefault();
+    keys.left = true;
+  }, { passive: false });
+
+  btnLeft.addEventListener("touchend", (e) => {
+    e.preventDefault();
+    keys.left = false;
+  }, { passive: false });
+
+  // direita
+  btnRight.addEventListener("touchstart", (e) => {
+    e.preventDefault();
+    keys.right = true;
+  }, { passive: false });
+
+  btnRight.addEventListener("touchend", (e) => {
+    e.preventDefault();
+    keys.right = false;
+  }, { passive: false });
+
+  // atirar
+  btnFire.addEventListener("touchstart", (e) => {
+    e.preventDefault();
+    keys.shoot = true;
+  }, { passive: false });
+
+  btnFire.addEventListener("touchend", (e) => {
+    e.preventDefault();
+    keys.shoot = false;
+  }, { passive: false });
 }
 </script>
 </body>
