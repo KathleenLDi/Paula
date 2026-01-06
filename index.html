@@ -1,0 +1,677 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Missão 🔥</title>
+  <style>
+    body { margin:0; font-family: Arial, sans-serif; background:#0b1020; color:#fff; }
+    .wrap { max-width: 920px; margin: 0 auto; padding: 16px; }
+.modal {
+  z-index: 9999;
+}
+#confetti {
+  z-index: 2000;
+  pointer-events: none;
+}
+    /* HUD centralizado */
+    .hud { display:flex; justify-content:center; margin-bottom: 10px; }
+    .pill {
+      background: rgba(255,255,255,.08);
+      border:1px solid rgba(255,255,255,.12);
+      padding:10px 14px;
+      border-radius:999px;
+      text-align:center;
+      min-width: 340px;
+    }
+
+    /* Fundo espacial (igual vibe de antes) */
+    canvas {
+      width:100%; height:auto;
+      background:
+        radial-gradient(1200px 600px at 50% 70%, rgba(255,77,141,.10), transparent 60%),
+        linear-gradient(#0b1020, #070a14);
+      border-radius:18px;
+      border:1px solid rgba(255,255,255,.12);
+      display:block;
+    }
+
+    .hint { opacity:.82; font-size: 13px; margin: 10px 0 10px; line-height:1.4; text-align:center; }
+
+    /* botões embaixo */
+    .bottomBar{
+      display:flex; gap:10px; flex-wrap:wrap; justify-content:center; margin-top: 12px;
+    }
+    .btn {
+      border:0; padding:10px 14px; border-radius:12px; cursor:pointer; font-weight:800;
+      background:#ff4d8d; color:#fff;
+    }
+    .btn.secondary {
+      background: rgba(255,255,255,.10);
+      color:#fff;
+      border:1px solid rgba(255,255,255,.18);
+    }
+
+    .modal {
+      position: fixed; inset: 0; background: rgba(0,0,0,.65);
+      display:flex; align-items:center; justify-content:center; padding: 18px;
+      z-index: 10;
+    }
+    .card {
+      width: min(560px, 100%);
+      background:#0e1630;
+      border:1px solid rgba(255,255,255,.12);
+      border-radius:18px;
+      padding: 18px;
+      box-shadow: 0 18px 60px rgba(0,0,0,.5);
+      text-align:center;
+    }
+    .card h2 { margin: 0 0 10px; }
+    .card p { margin: 10px 0; line-height:1.5; }
+    b { color: #ffd1e2; }
+
+    /* Confete por cima */
+    #confetti {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 20;
+      display:none;
+    }
+  </style>
+</head>
+
+<body>
+  <canvas id="confetti"></canvas>
+
+  <div class="wrap">
+    <div class="hud">
+      <div class="pill">
+        🔥 Pontos: <b id="score">0</b>
+        &nbsp; | &nbsp; ❤️ Vidas: <b id="lives">5</b>
+        &nbsp; | &nbsp; 🏁 Meta: <b id="target">25</b>
+      </div>
+    </div>
+
+    <div class="hint">
+      <b>← →</b> mover &nbsp;•&nbsp; <b>Espaço</b> atirar<br/>
+      As <b>bolas de fogo 🔥</b> ficam mais rápidas quando faltar <b>5 pontos</b> pra meta 😄
+    </div>
+
+    <canvas id="game" width="900" height="520" aria-label="Jogo de ação"></canvas>
+
+    <div class="bottomBar">
+      <button class="btn secondary" id="pauseBtn">Pausar</button>
+      <button class="btn" id="restartBtn">Reiniciar</button>
+      <button class="btn secondary" id="muteBtn">Música: ON</button>
+    </div>
+  </div>
+
+  <!-- Modal inicial -->
+  <div class="modal" id="startModal">
+    <div class="card">
+      <h2>Missão 🔥</h2>
+      <p>Chegue em <b><span id="target2">25</span></b> pontos.</p>
+      <p>Quando faltar <b>5 pontos</b>, O jogo acelera! Tenha atenção ⚠️</p>
+      <button class="btn" id="startBtn">Começar</button>
+    </div>
+  </div>
+
+  <!-- Modal final -->
+  <div class="modal" id="endModal" style="display:none;">
+    <div class="card">
+      <h2 id="endTitle">Fim!</h2>
+      <p id="endText"></p>
+      <button class="btn" id="playAgainBtn">Jogar novamente</button>
+    </div>
+  </div>
+
+<script>
+/* ===== CONFIG ===== */
+const TARGET_SCORE = 25;
+const START_LIVES = 5;
+
+// ritmo (um pouquinho mais rápido)
+const EARLY_SPAWN_MS = 760;
+const LATE_SPAWN_MS  = 340;
+
+// velocidades
+const EARLY_VY_MIN = 95,  EARLY_VY_MAX = 210;
+const LATE_VY_MIN  = 170, LATE_VY_MAX  = 330;
+
+// chance de inimigo “tough” (2 hits)
+const TOUGH_CHANCE = 0.18;
+
+// mensagem de vitória (exatamente como você pediu)
+const WIN_MESSAGE = "Parabéns, meu bem! Você conseguiu e ganhou um vale beijinho 💖."; 
+"Obs.: válido somente até hoje!.";
+/* ================== */
+
+document.getElementById("target").textContent = TARGET_SCORE;
+document.getElementById("target2").textContent = TARGET_SCORE;
+
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const scoreEl = document.getElementById("score");
+const livesEl = document.getElementById("lives");
+
+const startModal = document.getElementById("startModal");
+const endModal = document.getElementById("endModal");
+const endTitle = document.getElementById("endTitle");
+const endText  = document.getElementById("endText");
+
+const startBtn = document.getElementById("startBtn");
+const playAgainBtn = document.getElementById("playAgainBtn");
+const pauseBtn = document.getElementById("pauseBtn");
+const restartBtn = document.getElementById("restartBtn");
+const muteBtn = document.getElementById("muteBtn");
+
+let keys = { left:false, right:false, shoot:false };
+let bullets = [];
+let enemies = [];
+let particles = [];
+
+let score = 0;
+let lives = START_LIVES;
+
+let paused = false;
+let running = false;
+
+let lastTime = 0;
+let enemyTimer = 0;
+let enemyInterval = EARLY_SPAWN_MS;
+let bulletCooldown = 0;
+
+const ship = {
+  x: canvas.width/2,
+  y: canvas.height - 60,
+  w: 44, h: 44,
+  speed: 470
+};
+
+function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
+function rectsCollide(a,b){
+  return (a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y);
+}
+
+function inFinalRush(){
+  // “quando faltar 5 pontos” pra meta
+  return score >= (TARGET_SCORE - 5);
+}
+
+function resetGame(){
+  bullets = [];
+  enemies = [];
+  particles = [];
+
+  score = 0;
+  lives = START_LIVES;
+  paused = false;
+  running = true;
+
+  ship.x = canvas.width/2;
+  enemyTimer = 0;
+  enemyInterval = EARLY_SPAWN_MS;
+  bulletCooldown = 0;
+
+  scoreEl.textContent = score;
+  livesEl.textContent = lives;
+
+  stopConfetti();
+}
+
+function endGame(won){
+  running = false;
+  endModal.style.display = "flex";
+
+  if (won){
+    endTitle.textContent = "Você venceu! 🎉";
+    endText.textContent = WIN_MESSAGE;
+    startConfetti();
+  } else {
+    endTitle.textContent = "Game Over 😵";
+    endText.textContent = `Você fez ${score} pontos.`;
+    stopConfetti();
+  }
+}
+
+/* ===== Música de fundo (WebAudio) ===== */
+let musicOn = true;
+let audioCtx = null;
+let musicTimer = null;
+let musicGain = null;
+
+function ensureAudio(){
+  if (!audioCtx){
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    audioCtx = new AudioCtx();
+    musicGain = audioCtx.createGain();
+    musicGain.gain.value = 0.06; // volume
+    musicGain.connect(audioCtx.destination);
+  }
+}
+
+function playTone(freq, dur){
+  if (!musicOn) return;
+  ensureAudio();
+
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = "triangle";
+  o.frequency.value = freq;
+
+  g.gain.value = 0.0001;
+  o.connect(g);
+  g.connect(musicGain);
+
+  const now = audioCtx.currentTime;
+  g.gain.setValueAtTime(0.0001, now);
+  g.gain.exponentialRampToValueAtTime(0.12, now + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+
+  o.start(now);
+  o.stop(now + dur + 0.02);
+}
+
+function startMusic(){
+  if (!musicOn) return;
+  ensureAudio();
+  stopMusic();
+
+  // loop simples estilo arcade
+  const seq = [392, 440, 523, 440, 349, 392, 440, 349];
+  let i = 0;
+
+  musicTimer = setInterval(() => {
+    if (!running || paused) return;
+    const stepDur = inFinalRush() ? 0.09 : 0.12; // acelera no final
+    playTone(seq[i % seq.length], stepDur);
+    i++;
+  }, 140);
+}
+
+function stopMusic(){
+  if (musicTimer){
+    clearInterval(musicTimer);
+    musicTimer = null;
+  }
+}
+
+muteBtn.addEventListener("click", () => {
+  musicOn = !musicOn;
+  muteBtn.textContent = "Música: " + (musicOn ? "ON" : "OFF");
+  if (musicOn) startMusic();
+  else stopMusic();
+});
+
+/* ===== Inimigos = 🔥 ===== */
+function spawnEnemy(){
+  const size = 28 + Math.random()*18;
+
+  const vy = inFinalRush()
+    ? (LATE_VY_MIN + Math.random()*(LATE_VY_MAX - LATE_VY_MIN))
+    : (EARLY_VY_MIN + Math.random()*(EARLY_VY_MAX - EARLY_VY_MIN));
+
+  const vx = inFinalRush()
+    ? ((Math.random()*2 - 1) * 58)
+    : ((Math.random()*2 - 1) * 34);
+
+  const e = {
+    x: Math.random()*(canvas.width - size) + size/2,
+    y: -size,
+    w: size, h: size,
+    vy,
+    vx,
+    hp: (Math.random() < TOUGH_CHANCE) ? 2 : 1
+  };
+
+  enemies.push(e);
+}
+
+function spawnExplosion(x,y,amount=12){
+  for (let i=0;i<amount;i++){
+    particles.push({
+      x, y,
+      vx: (Math.random()*2 - 1)*200,
+      vy: (Math.random()*2 - 1)*200,
+      life: 0.35 + Math.random()*0.35
+    });
+  }
+}
+
+function updateDifficulty(){
+  const target = inFinalRush() ? LATE_SPAWN_MS : EARLY_SPAWN_MS;
+  enemyInterval += (target - enemyInterval) * 0.07;
+}
+
+/* ===== Game loop ===== */
+function update(dt){
+  if (!running || paused) return;
+
+  updateDifficulty();
+
+  // move nave
+  if (keys.left) ship.x -= ship.speed*dt;
+  if (keys.right) ship.x += ship.speed*dt;
+  ship.x = clamp(ship.x, ship.w/2, canvas.width - ship.w/2);
+
+  // tiro (não muda a nave)
+  bulletCooldown -= dt;
+  if (keys.shoot && bulletCooldown <= 0){
+    bullets.push({ x: ship.x, y: ship.y - ship.h/2, w: 6, h: 14, vy: -650 });
+    bulletCooldown = 0.14;
+  }
+
+  // spawn inimigos
+  enemyTimer += dt*1000;
+  if (enemyTimer >= enemyInterval){
+    enemyTimer = 0;
+    spawnEnemy();
+  }
+
+  // mover balas
+  bullets.forEach(b => b.y += b.vy*dt);
+  bullets = bullets.filter(b => b.y > -40);
+
+  // mover inimigos
+  enemies.forEach(e => {
+    e.y += e.vy*dt;
+    e.x += e.vx*dt;
+    if (e.x < e.w/2 || e.x > canvas.width - e.w/2) e.vx *= -1;
+  });
+
+  // colisão bala x inimigo
+  for (let i=enemies.length-1; i>=0; i--){
+    const e = enemies[i];
+    const eRect = { x: e.x - e.w/2, y: e.y - e.h/2, w: e.w, h: e.h };
+
+    for (let j=bullets.length-1; j>=0; j--){
+      const b = bullets[j];
+      const bRect = { x: b.x - b.w/2, y: b.y - b.h/2, w: b.w, h: b.h };
+
+      if (rectsCollide(eRect, bRect)){
+        bullets.splice(j,1);
+        e.hp -= 1;
+
+        if (e.hp <= 0){
+          enemies.splice(i,1);
+          spawnExplosion(e.x, e.y, 12);
+          score += 1;
+          scoreEl.textContent = score;
+
+          if (score >= TARGET_SCORE){
+            endGame(true);
+            return;
+          }
+        }
+        break;
+      }
+    }
+  }
+
+  // vida só perde se encostar na nave
+  const shipRect = { x: ship.x - ship.w/2, y: ship.y - ship.h/2, w: ship.w, h: ship.h };
+
+  for (let i=enemies.length-1; i>=0; i--){
+    const e = enemies[i];
+    const eRect = { x: e.x - e.w/2, y: e.y - e.h/2, w: e.w, h: e.h };
+
+    if (rectsCollide(eRect, shipRect)){
+      enemies.splice(i,1);
+      spawnExplosion(ship.x, ship.y, 18);
+      lives--;
+      livesEl.textContent = lives;
+
+      if (lives <= 0){
+        endGame(false);
+        return;
+      }
+      continue;
+    }
+
+    // passou do fundo -> só remove
+    if (e.y - e.h/2 > canvas.height + 10){
+      enemies.splice(i,1);
+    }
+  }
+
+  // partículas
+  particles.forEach(p => {
+    p.x += p.vx*dt;
+    p.y += p.vy*dt;
+    p.vx *= (1 - 2.2*dt);
+    p.vy *= (1 - 2.2*dt);
+    p.life -= dt;
+  });
+  particles = particles.filter(p => p.life > 0);
+}
+
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  // estrelas (pra ficar bem “espaço”)
+  ctx.globalAlpha = 0.6;
+  for (let i=0;i<70;i++){
+    const x = (i*97 + (performance.now()/28)) % canvas.width;
+    const y = (i*53) % canvas.height;
+    ctx.fillRect(x, y, 2, 2);
+  }
+  ctx.globalAlpha = 1;
+
+  // nave (atirador) - NÃO muda
+  ctx.save();
+  ctx.translate(ship.x, ship.y);
+  ctx.beginPath();
+  ctx.moveTo(0, -22);
+  ctx.lineTo(18, 18);
+  ctx.lineTo(-18, 18);
+  ctx.closePath();
+  ctx.fillStyle = "#ff4d8d";
+  ctx.fill();
+  ctx.shadowColor = "#ff4d8d";
+  ctx.shadowBlur = 18;
+  ctx.fill();
+  ctx.restore();
+
+  // tiros (simples)
+  ctx.fillStyle = "#ffd1e2";
+  bullets.forEach(b => ctx.fillRect(b.x - b.w/2, b.y - b.h/2, b.w, b.h));
+
+  // inimigos como 🔥 (bola de fogo)
+  enemies.forEach(e => {
+    const fontSize = Math.max(22, Math.min(44, e.w + 6));
+    ctx.font = `${fontSize}px Arial`;
+    // se hp=2, desenha “mais forte” com sombra
+    if (e.hp >= 2){
+      ctx.save();
+      ctx.shadowColor = "rgba(255,140,0,.95)";
+      ctx.shadowBlur = 18;
+      ctx.fillText("🔥", e.x - fontSize*0.28, e.y + fontSize*0.34);
+      ctx.restore();
+    } else {
+      ctx.fillText("🔥", e.x - fontSize*0.28, e.y + fontSize*0.34);
+    }
+  });
+
+  // partículas
+  particles.forEach(p => {
+    ctx.globalAlpha = Math.max(0, p.life);
+    ctx.fillStyle = "#ffb3d1";
+    ctx.fillRect(p.x, p.y, 3, 3);
+    ctx.globalAlpha = 1;
+  });
+
+  // pausa overlay
+  if (paused && running){
+    ctx.fillStyle = "rgba(0,0,0,.45)";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle = "#fff";
+    ctx.font = "800 36px Arial";
+    ctx.fillText("PAUSADO", canvas.width/2 - 90, canvas.height/2);
+    ctx.font = "16px Arial";
+    ctx.fillText("Aperte P para voltar", canvas.width/2 - 88, canvas.height/2 + 30);
+  }
+}
+
+function loop(t){
+  const dt = Math.min(0.033, (t - lastTime) / 1000);
+  lastTime = t;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+/* ===== Controles ===== */
+window.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowLeft") keys.left = true;
+  if (e.key === "ArrowRight") keys.right = true;
+  if (e.key === " ") { keys.shoot = true; e.preventDefault(); }
+  if (e.key.toLowerCase() === "p") togglePause();
+});
+window.addEventListener("keyup", (e) => {
+  if (e.key === "ArrowLeft") keys.left = false;
+  if (e.key === "ArrowRight") keys.right = false;
+  if (e.key === " ") keys.shoot = false;
+});
+
+function togglePause(){
+  if (!running) return;
+  paused = !paused;
+  pauseBtn.textContent = paused ? "Continuar" : "Pausar";
+}
+
+pauseBtn.addEventListener("click", togglePause);
+
+restartBtn.addEventListener("click", () => {
+  stopConfetti();
+  endModal.style.display = "none";
+  startModal.style.display = "flex";
+  running = false;
+  paused = false;
+  pauseBtn.textContent = "Pausar";
+  stopMusic();
+});
+
+startBtn.addEventListener("click", async () => {
+  startModal.style.display = "none";
+  endModal.style.display = "none";
+  resetGame();
+
+  // liberar áudio
+  ensureAudio();
+  if (audioCtx.state === "suspended") await audioCtx.resume();
+  if (musicOn) startMusic();
+});
+
+playAgainBtn.addEventListener("click", () => {
+  endModal.style.display = "none";
+  resetGame();
+  if (musicOn) startMusic();
+});
+
+requestAnimationFrame(loop);
+
+/* ===== Confete ===== */
+const conf = document.getElementById("confetti");
+const cctx = conf.getContext("2d");
+
+let confettiOn = false;
+let confettiPieces = [];
+let confettiRAF = null;
+let confettiStartAt = 0;
+
+// ✅ garante que o confete não “tape” o modal/botões e não capture clique
+conf.style.pointerEvents = "none";
+conf.style.zIndex = "2000"; // deixa abaixo do modal (que deve ser 9999)
+
+function resizeConfetti(){
+  conf.width = window.innerWidth;
+  conf.height = window.innerHeight;
+}
+window.addEventListener("resize", resizeConfetti);
+resizeConfetti();
+
+function startConfetti(){
+  confettiOn = true;
+  confettiStartAt = performance.now();
+  conf.style.display = "block";
+
+  confettiPieces = [];
+  for (let i=0; i<260; i++){
+    confettiPieces.push(makePiece(true));
+  }
+
+  if (!confettiRAF) confettiLoop();
+}
+
+// ✅ para automaticamente depois de X segundos (pra não ficar infinito)
+function stopConfetti(){
+  confettiOn = false;
+  conf.style.display = "none";
+  confettiPieces = [];
+
+  if (confettiRAF){
+    cancelAnimationFrame(confettiRAF);
+    confettiRAF = null;
+  }
+}
+
+function makePiece(spawnTop=false){
+  const w = 6 + Math.random()*7;
+  const h = 8 + Math.random()*12;
+
+  return {
+    x: Math.random() * conf.width,
+    y: spawnTop ? (-Math.random() * conf.height) : (Math.random() * conf.height),
+    w, h,
+    vx: (Math.random()*2 - 1) * 80,
+    vy: 160 + Math.random()*260,
+    rot: Math.random() * Math.PI,
+    vr: (Math.random()*2 - 1) * 6,
+    r: Math.floor(100 + Math.random()*155),
+    g: Math.floor(100 + Math.random()*155),
+    b: Math.floor(100 + Math.random()*155),
+  };
+}
+
+function confettiLoop(){
+  if (!confettiOn) return;
+
+  const now = performance.now();
+
+  // ✅ encerra sozinho depois de 6 segundos
+  if (now - confettiStartAt > 6000){
+    stopConfetti();
+    return;
+  }
+
+  // ✅ usa deltaTime real (fica suave em qualquer PC)
+  const dt = 1/60;
+
+  cctx.clearRect(0, 0, conf.width, conf.height);
+
+  for (let p of confettiPieces){
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.rot += p.vr * dt;
+
+    cctx.save();
+    cctx.translate(p.x, p.y);
+    cctx.rotate(p.rot);
+    cctx.fillStyle = `rgb(${p.r},${p.g},${p.b})`;
+    cctx.fillRect(-p.w/2, -p.h/2, p.w, p.h);
+    cctx.restore();
+
+    // respawn
+    if (p.y > conf.height + 30){
+      p.x = Math.random() * conf.width;
+      p.y = -30;
+    }
+  }
+
+  confettiRAF = requestAnimationFrame(confettiLoop);
+}
+</script>
+</body>
+</html>
